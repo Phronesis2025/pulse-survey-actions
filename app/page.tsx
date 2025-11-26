@@ -26,14 +26,16 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-8">
           <div className="flex flex-col sm:flex-row items-center justify-between h-auto sm:h-16 py-3 sm:py-0 gap-3 sm:gap-0">
             <div className="flex items-center order-1">
-              <Image
-                src="/Pulse_Logo-RGB-White-Full_Color_H.svg"
-                alt="Pulse Logo"
-                width={200}
-                height={62}
-                className="h-8 sm:h-10 w-auto"
-                priority
-              />
+              <Link href="/">
+                <Image
+                  src="/Pulse_Logo-RGB-White-Full_Color_H.svg"
+                  alt="Pulse Logo"
+                  width={200}
+                  height={62}
+                  className="h-8 sm:h-10 w-auto cursor-pointer"
+                  priority
+                />
+              </Link>
             </div>
             <div className="flex items-center justify-center flex-1 order-2">
               <h1 className="text-lg sm:text-xl font-bold text-white">Pulse Survey Actions</h1>
