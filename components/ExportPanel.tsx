@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { exportToExcel } from '@/lib/excel';
+import { getStatusBadgeClasses } from '@/lib/statusColors';
 import type { ActionItem } from '@/types';
 
 export default function ExportPanel() {
@@ -101,7 +102,7 @@ export default function ExportPanel() {
               </div>
               <div>
                 <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Status</p>
-                <span className="inline-block px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800">
+                <span className={`inline-block ${getStatusBadgeClasses(item.status?.name)}`}>
                   {item.status?.name || 'N/A'}
                 </span>
               </div>
@@ -176,7 +177,7 @@ export default function ExportPanel() {
                       {item.action_item}
                     </td>
                     <td className="px-4 lg:px-6 py-4 whitespace-nowrap">
-                      <span className="px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800">
+                      <span className={`inline-block ${getStatusBadgeClasses(item.status?.name)}`}>
                         {item.status?.name || 'N/A'}
                       </span>
                     </td>

@@ -60,12 +60,14 @@ npm install
    ```
 
 2. Edit `.env.local` and add your Supabase credentials:
+
    ```
    NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
    NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key_here
    ```
-   
+
    **Security Note**: These variables are safe to use. The `NEXT_PUBLIC_` prefix means they'll be exposed in the browser, but:
+
    - The URL is just a public endpoint
    - The anon key is protected by Row Level Security (RLS) policies
    - Vercel environment variables are encrypted and secure
@@ -211,11 +213,11 @@ The application is optimized for Vercel's free tier.
 
 ## Environment Variables
 
-| Variable                        | Description                            | Required | Security Note |
-| ------------------------------- | -------------------------------------- | -------- | ------------- |
-| `NEXT_PUBLIC_SUPABASE_URL`      | Your Supabase project URL              | Yes      | Safe - Public URL only |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Your Supabase anonymous key            | Yes      | Safe - Protected by RLS policies |
-| `PLAYWRIGHT_TEST_BASE_URL`      | Base URL for E2E tests                 | Optional | Development only |
+| Variable                        | Description                 | Required | Security Note                    |
+| ------------------------------- | --------------------------- | -------- | -------------------------------- |
+| `NEXT_PUBLIC_SUPABASE_URL`      | Your Supabase project URL   | Yes      | Safe - Public URL only           |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Your Supabase anonymous key | Yes      | Safe - Protected by RLS policies |
+| `PLAYWRIGHT_TEST_BASE_URL`      | Base URL for E2E tests      | Optional | Development only                 |
 
 ## Database Schema
 

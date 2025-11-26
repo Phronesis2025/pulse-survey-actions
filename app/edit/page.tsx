@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import EditItemForm from '@/components/EditItemForm';
+import { getStatusBadgeClasses } from '@/lib/statusColors';
 import type { ActionItem, ActionItemFormData } from '@/types';
 
 export default function EditPage() {
@@ -159,7 +160,7 @@ export default function EditPage() {
                                 </div>
                                 <div>
                                   <p className="text-xs text-gray-500 sm:hidden mb-1">Status</p>
-                                  <span className="inline-block px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800">
+                                  <span className={`inline-block ${getStatusBadgeClasses(item.status?.name)}`}>
                                     {item.status?.name || 'N/A'}
                                   </span>
                                 </div>
