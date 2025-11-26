@@ -213,19 +213,24 @@ INSERT INTO statuses (name) VALUES
   ('Cancelled')
 ON CONFLICT (name) DO NOTHING;
 
--- Disable Row Level Security for internal use (optional - adjust based on your security needs)
--- By default, Supabase enables RLS. For internal use without authentication, you may want to disable it:
-ALTER TABLE sites DISABLE ROW LEVEL SECURITY;
-ALTER TABLE categories DISABLE ROW LEVEL SECURITY;
-ALTER TABLE sub_categories DISABLE ROW LEVEL SECURITY;
-ALTER TABLE statuses DISABLE ROW LEVEL SECURITY;
-ALTER TABLE action_items DISABLE ROW LEVEL SECURITY;
+-- Enable Row Level Security (RLS) for better security
+-- RLS is enabled by default in Supabase, but we'll create permissive policies for internal use
+-- This provides a security layer while still allowing access for your application
 
--- If you prefer to keep RLS enabled, create policies instead:
--- CREATE POLICY "Enable all operations for all users" ON sites FOR ALL USING (true) WITH CHECK (true);
--- CREATE POLICY "Enable all operations for all users" ON categories FOR ALL USING (true) WITH CHECK (true);
--- CREATE POLICY "Enable all operations for all users" ON sub_categories FOR ALL USING (true) WITH CHECK (true);
--- CREATE POLICY "Enable all operations for all users" ON statuses FOR ALL USING (true) WITH CHECK (true);
--- CREATE POLICY "Enable all operations for all users" ON action_items FOR ALL USING (true) WITH CHECK (true);
+-- Enable RLS on all tables
+ALTER TABLE sites ENABLE ROW LEVEL SECURITY;
+ALTER TABLE categories ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sub_categories ENABLE ROW LEVEL SECURITY;
+ALTER TABLE statuses ENABLE ROW LEVEL SECURITY;
+ALTER TABLE action_items ENABLE ROW LEVEL SECURITY;
+
+-- Create permissive policies for internal use (allows all operations)
+-- These policies allow anyone with the anon key to access the data
+-- For more security, you could restrict these policies further
+CREATE POLICY "Enable all operations for all users" ON sites FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Enable all operations for all users" ON categories FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Enable all operations for all users" ON sub_categories FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Enable all operations for all users" ON statuses FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Enable all operations for all users" ON action_items FOR ALL USING (true) WITH CHECK (true);
 
 

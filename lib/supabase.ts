@@ -19,20 +19,6 @@ function getSupabaseClient(): SupabaseClient {
 // Create a single supabase client for interacting with your database
 export const supabase = getSupabaseClient();
 
-// Server-side client with service role key (for admin operations)
-export const createServerClient = () => {
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-  if (!serviceRoleKey) {
-    throw new Error('SUPABASE_SERVICE_ROLE_KEY is not set');
-  }
-  if (!supabaseUrl) {
-    throw new Error('NEXT_PUBLIC_SUPABASE_URL is not set');
-  }
-  return createClient(supabaseUrl, serviceRoleKey, {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false
-    }
-  });
-};
+// Note: Service role key is not needed for this application
+// All operations use the anon key with Row Level Security policies
 
