@@ -1,12 +1,35 @@
 import { test, expect } from '@playwright/test';
 import { testData, waitForApiCall } from './fixtures';
 
+// Each test that creates rows uses a unique user name and registers it here;
+// afterEach deletes exactly those rows via the API so no test data persists.
+// Names must be unique per test because tests may run in parallel workers.
+const createdUserNames: string[] = [];
+
+function uniqueUserName(): string {
+  const name = `E2E Test User ${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  createdUserNames.push(name);
+  return name;
+}
+
+test.afterEach(async ({ request }) => {
+  while (createdUserNames.length > 0) {
+    const name = createdUserNames.pop()!;
+    const res = await request.get(`/api/action-items?user_name=${encodeURIComponent(name)}`);
+    if (!res.ok()) continue;
+    const items: { id: string }[] = await res.json();
+    for (const item of items) {
+      await request.delete(`/api/action-items/${item.id}`);
+    }
+  }
+});
+
 test.describe('Action Items', () => {
   test('should submit a new action item', async ({ page }) => {
     await page.goto('/');
 
     // Fill in the form
-    await page.fill('input[id="user_name"]', testData.user.name);
+    await page.fill('input[id="user_name"]', uniqueUserName());
     await page.selectOption('select[id="site_id"]', { index: 1 }); // Select first available site
     await page.selectOption('select[id="category_id"]', { index: 1 }); // Select first available category
     await waitForApiCall(page); // Wait for sub-categories to load
@@ -53,10 +76,11 @@ test.describe('Action Items', () => {
     expect(hasItems || hasNoItems).toBe(true);
   });
 
-  test('should edit an existing action item', async ({ page }) => {
+  test('should edit an existing action item', async ({ page, request }) => {
     // First, create an item to edit
+    const userName = uniqueUserName();
     await page.goto('/');
-    await page.fill('input[id="user_name"]', testData.user.name);
+    await page.fill('input[id="user_name"]', userName);
     await page.selectOption('select[id="site_id"]', { index: 1 });
     await page.selectOption('select[id="category_id"]', { index: 1 });
     await waitForApiCall(page);
@@ -64,50 +88,40 @@ test.describe('Action Items', () => {
     await page.fill('textarea[id="action_item"]', 'Test item for editing');
     await page.selectOption('select[id="status_id"]', { index: 1 });
     await page.click('button[type="submit"]');
-    
+
     // Wait for success message
     await expect(page.locator('text=Action item submitted successfully!')).toBeVisible({ timeout: 10000 });
 
-    // Now go to edit page
+    // Now go to edit page and find this test's row (other rows may exist)
     await page.goto('/edit');
+    const row = page.locator('.bg-gray-50', { hasText: userName });
+    await expect(row).toBeVisible({ timeout: 10000 });
+    await row.locator('button:has-text("Edit")').click();
 
-    // Wait for items to load
-    await page.waitForTimeout(3000);
-    
-    // Check if edit button exists
-    const editButton = page.locator('button:has-text("Edit")').first();
-    const buttonCount = await editButton.count();
-    
-    // Skip if no items to edit (database might not be set up)
-    if (buttonCount === 0) {
-      console.log('No items found to edit - skipping test');
-      return;
-    }
+    // The row is replaced by a summary card with its own Edit button;
+    // click it to open the actual edit form
+    const summaryCard = page.locator('.bg-white.shadow-md', { hasText: 'Test item for editing' });
+    await summaryCard.locator('button:has-text("Edit")').click();
 
-    await expect(editButton).toBeVisible({ timeout: 5000 });
-    await editButton.click();
-
-    // Wait a bit for the edit form to render
-    await page.waitForTimeout(1000);
-
-    // Try to find the form - it might be loading dropdowns
-    // Check if form fields are visible (they appear after dropdowns load)
+    // Update the action item text once the form's dropdowns have loaded.
+    // The sub-category options load in a second fetch after the form renders;
+    // until then the required select is empty and native validation would
+    // silently block the submit.
     const actionItemField = page.locator('textarea[id="action_item"]');
-    const isFieldVisible = await actionItemField.isVisible({ timeout: 10000 }).catch(() => false);
-    
-    if (!isFieldVisible) {
-      console.log('Edit form did not load in time - this may require database setup');
-      return;
-    }
+    await expect(actionItemField).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('select[id="sub_category_id"]')).toHaveValue(/.+/, { timeout: 10000 });
+    await actionItemField.fill(testData.actionItem.updatedActionItem);
 
-    // Update the action item text
-    await page.fill('textarea[id="action_item"]', testData.actionItem.updatedActionItem);
-
-    // Submit the update
+    // Submit the update; the page closes the form and reloads the list
     await page.click('button:has-text("Update Action Item")');
+    await expect(row).toBeVisible({ timeout: 10000 });
 
-    // Wait for success message
-    await expect(page.locator('text=Action item updated successfully!')).toBeVisible({ timeout: 10000 });
+    // Verify via the API that the update was persisted
+    const res = await request.get(`/api/action-items?user_name=${encodeURIComponent(userName)}`);
+    expect(res.ok()).toBe(true);
+    const items: { action_item: string }[] = await res.json();
+    expect(items).toHaveLength(1);
+    expect(items[0].action_item).toBe(testData.actionItem.updatedActionItem);
   });
 
   test('should show message when no items found', async ({ page }) => {

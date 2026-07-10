@@ -124,12 +124,22 @@ export async function getActionItemById(id: string): Promise<ActionItem | null> 
 
 // Helper function to update an action item
 export async function updateActionItem(id: string, formData: Partial<ActionItemFormData>): Promise<ActionItem> {
+  const updates: Record<string, unknown> = {
+    ...formData,
+    updated_at: new Date().toISOString(),
+  };
+  // Coerce empty strings to null for nullable columns (matches createActionItem);
+  // an empty string is not valid for the DATE column
+  if ('estimated_completion_date' in formData) {
+    updates.estimated_completion_date = formData.estimated_completion_date || null;
+  }
+  if ('notes' in formData) {
+    updates.notes = formData.notes || null;
+  }
+
   const { data, error } = await supabase
     .from(TABLES.ACTION_ITEMS)
-    .update({
-      ...formData,
-      updated_at: new Date().toISOString(),
-    })
+    .update(updates)
     .eq('id', id)
     .select()
     .single();
