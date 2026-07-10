@@ -11,6 +11,10 @@
 -- Admin mutations go through API routes that use the service_role key,
 -- which bypasses RLS entirely, so no policies are needed for them.
 --
+-- Idempotent: safe to re-run at any time (each CREATE POLICY is preceded
+-- by a DROP POLICY IF EXISTS). Always re-run this file if 001 has been
+-- re-applied, because 001 recreates the permissive policies.
+--
 -- Run this in the Supabase SQL Editor.
 
 -- Drop the allow-all policies created in 001
@@ -21,6 +25,12 @@ DROP POLICY IF EXISTS "Enable all operations for all users" ON statuses;
 DROP POLICY IF EXISTS "Enable all operations for all users" ON action_items;
 
 -- Public read access on all five tables
+DROP POLICY IF EXISTS "Anon can read sites"          ON sites;
+DROP POLICY IF EXISTS "Anon can read categories"     ON categories;
+DROP POLICY IF EXISTS "Anon can read sub_categories" ON sub_categories;
+DROP POLICY IF EXISTS "Anon can read statuses"       ON statuses;
+DROP POLICY IF EXISTS "Anon can read action_items"   ON action_items;
+
 CREATE POLICY "Anon can read sites"          ON sites          FOR SELECT TO anon USING (true);
 CREATE POLICY "Anon can read categories"     ON categories     FOR SELECT TO anon USING (true);
 CREATE POLICY "Anon can read sub_categories" ON sub_categories FOR SELECT TO anon USING (true);
@@ -30,6 +40,7 @@ CREATE POLICY "Anon can read action_items"   ON action_items   FOR SELECT TO ano
 -- Public submissions: anon may INSERT action items only.
 -- (The INSERT ... RETURNING used by the API also needs the SELECT policy
 -- above, which is already in place.)
+DROP POLICY IF EXISTS "Anon can insert action_items" ON action_items;
 CREATE POLICY "Anon can insert action_items" ON action_items FOR INSERT TO anon WITH CHECK (true);
 
 -- No UPDATE or DELETE policies for anon on any table, and no INSERT on the

@@ -44,7 +44,7 @@ A seed script (`npm run seed`) creates ~15 realistic items **through the public 
 
 ### 4. CI as a gate, not a decoration
 
-Every push and PR to `main` runs typecheck, lint, build, and the full 13-test Playwright suite against a production server (`next start`, not the dev server). Because e2e runs against a real shared database, the workflow uses a per-ref concurrency group so runs never overlap, and test cleanup is *loud*: a failed cleanup DELETE throws and fails the test rather than silently stranding rows. Test rows are registered for cleanup **before** creation and swept by name, so a test that dies mid-body still gets cleaned.
+Every push and PR to `main` runs typecheck, lint, build, and the full 13-test Playwright suite against a production server (`next start`, not the dev server). Vercel adds its own independent gate — it refuses to deploy Next.js versions with known critical CVEs, which is exactly how the 16.0.4 → 16.2.10 security upgrade got forced at ship time. Because e2e runs against a real shared database, the workflow uses a per-ref concurrency group so runs never overlap, and test cleanup is *loud*: a failed cleanup DELETE throws and fails the test rather than silently stranding rows. Test rows are registered for cleanup **before** creation and swept by name, so a test that dies mid-body still gets cleaned.
 
 ## Architecture
 
@@ -62,7 +62,7 @@ The browser never holds a database credential. The `/edit` page's "unlock" (a pr
 
 ## Tech stack
 
-Next.js 16 (App Router, TypeScript, Turbopack) · Supabase Postgres with RLS · Tailwind CSS 4 · Playwright · GitHub Actions · Vercel-ready
+Next.js 16.2 (App Router, TypeScript, Turbopack) · Supabase Postgres with RLS · Tailwind CSS 4 · Playwright · GitHub Actions · Vercel
 
 ## Getting started
 
@@ -118,7 +118,19 @@ Same pattern for `PUT`/`DELETE` on `/api/sites/[id]`, `/api/categories`, `/api/s
 
 ## Power BI
 
-Connect Power BI Desktop directly to the Supabase Postgres instance (**Get Data → PostgreSQL**, host `db.<project-ref>.supabase.co`, database `postgres`, port `5432`) and join `action_items` against the four lookup tables. A ready-made join query lives in the schema comments of `001_initial_schema.sql`.
+Connect Power BI Desktop directly to the Supabase Postgres instance (**Get Data → PostgreSQL**, host `db.<project-ref>.supabase.co`, database `postgres`, port `5432`) and join `action_items` against the four lookup tables:
+
+```sql
+SELECT ai.user_name, s.name AS site, c.name AS category, sc.name AS sub_category,
+       ai.action_item, ai.estimated_completion_date, st.name AS status,
+       ai.notes, ai.created_at, ai.updated_at
+FROM action_items ai
+LEFT JOIN sites s ON ai.site_id = s.id
+LEFT JOIN categories c ON ai.category_id = c.id
+LEFT JOIN sub_categories sc ON ai.sub_category_id = sc.id
+LEFT JOIN statuses st ON ai.status_id = st.id
+ORDER BY ai.created_at DESC;
+```
 
 ## Deployment
 

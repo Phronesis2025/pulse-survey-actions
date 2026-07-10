@@ -1,5 +1,14 @@
 -- Facilities Feedback System - Initial Database Schema
 -- Run this SQL in your Supabase SQL Editor
+--
+-- NOT idempotent — re-run with care:
+--   * The DELETE statements below intentionally WIPE existing action_items
+--     (this file is a full demo reset, not an additive migration).
+--   * The CREATE POLICY statements at the bottom will ERROR if those
+--     policies already exist (harmless if everything above already ran,
+--     but the script stops there).
+--   * Re-running recreates the permissive allow-all policies, so ALWAYS
+--     apply 002_harden_rls.sql again afterwards.
 
 -- Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";

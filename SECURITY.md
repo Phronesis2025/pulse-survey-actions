@@ -72,6 +72,24 @@ is gitignored.
   write access. Rotate immediately (regenerate the secret / rotate the key in
   Supabase → Settings → API) if you suspect compromise.
 
+## Known dependency advisories
+
+`npm audit` findings reviewed 2026-07-10 (production dependencies):
+
+- **`xlsx` (high — [prototype pollution](https://github.com/advisories/GHSA-4r6h-8v6p-xvw6), [ReDoS](https://github.com/advisories/GHSA-5pgg-2g8v-p4x9); no fixed npm release exists).**
+  Not exploitable in this app's usage: xlsx is used in exactly one place
+  (`lib/excel.ts`) to **generate** workbooks from our own database rows
+  (`json_to_sheet` → `writeFile`). Both advisory classes require the library
+  to **parse** an attacker-supplied spreadsheet, and no read/parse code path
+  exists anywhere in the app.
+- **`ws` (transitive, via `@supabase/realtime-js`).** The app never opens a
+  realtime/websocket connection — all database access is server-side REST.
+  A patched version is available via `npm audit fix` when convenient.
+- **`postcss` (moderate, pinned inside `next` itself).** Resolves upstream
+  with future Next.js releases; not directly actionable here.
+
+Re-check with `npm audit --omit=dev` after dependency changes.
+
 ## Known limitations (accepted for a demo app)
 
 - A single shared admin secret, not per-user auth or audit trails.
