@@ -1,4 +1,9 @@
 import { defineConfig, devices } from '@playwright/test';
+import { loadEnvConfig } from '@next/env';
+
+// Load .env.local the same way Next.js does, so the specs can read
+// ADMIN_SECRET (needed for the admin-gated edit/delete API calls).
+loadEnvConfig(__dirname);
 
 /**
  * See https://playwright.dev/docs/test-configuration.

@@ -1,12 +1,12 @@
 # Facilities Feedback - Action Item Management System
 
-A full-stack Next.js application for collecting and managing facilities maintenance action items from survey feedback. Users can submit action items, search and edit their own items by name, and administrators can manage dropdown options. The system includes Excel export and Power BI database connection support.
+A full-stack Next.js application for collecting and managing facilities maintenance action items from survey feedback. Anyone can submit and browse action items; editing and deleting are protected by an admin secret (see `SECURITY.md`). The system includes Excel export and Power BI database connection support.
 
 ## Features
 
-- ✅ **Submit Action Items**: Clean, intuitive form for submitting facilities maintenance action items
-- ✅ **Edit Existing Items**: Search by name to find and edit previously submitted action items
-- ✅ **Admin Panel**: Manage dropdown options for sites, categories, sub-categories, and statuses
+- ✅ **Submit Action Items**: Clean, intuitive form for submitting facilities maintenance action items (open to everyone)
+- ✅ **Edit Existing Items**: The Edit page lists all action items; modifying them requires the admin secret
+- ✅ **Layered Security**: Admin-secret-gated API mutations backed by restrictive Row Level Security policies
 - ✅ **Excel Export**: Export all action items to Excel format
 - ✅ **Power BI Integration**: Direct database connection support for Power BI
 - ✅ **E2E Testing**: Comprehensive Playwright tests for all functionality
@@ -42,15 +42,16 @@ npm install
 3. Go to **Settings** → **API** to get your:
    - Project URL
    - Anon/public key
-
-   (The service role key is not used by this application.)
+   - Service role key (used only by admin-gated API routes; treat it like a database password)
 
 ### 3. Create Database Schema
 
 1. In your Supabase project, go to **SQL Editor**
 2. Copy and paste the contents of `supabase/migrations/001_initial_schema.sql`
-3. Run the SQL script
-4. This will create all necessary tables and insert placeholder data
+3. Run the SQL script — this creates all tables and inserts dropdown data
+4. Then run `supabase/migrations/002_harden_rls.sql` — this replaces the
+   permissive RLS policies with the locked-down ones the app expects
+   (public read + submit only; all other writes require the service role)
 
 ### 4. Configure Environment Variables
 
@@ -60,21 +61,23 @@ npm install
    cp .env.example .env.local
    ```
 
-2. Edit `.env.local` and add your Supabase credentials:
+2. Edit `.env.local` and add your credentials:
 
    ```
-   NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-   NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key_here
+   SUPABASE_URL=https://your-project.supabase.co
+   SUPABASE_ANON_KEY=your_anon_key_here
+   SUPABASE_SERVICE_ROLE_KEY=your_service_role_key_here
+   ADMIN_SECRET=a_long_random_string
    ```
 
-   **Security Note**: These variables are safe to use. The `NEXT_PUBLIC_` prefix means they'll be exposed in the browser, but:
+   **Security Note**: All four variables are server-only (no `NEXT_PUBLIC_`
+   prefix), so none of them are compiled into browser JavaScript. The browser
+   never talks to Supabase directly — everything goes through the API routes.
+   See `SECURITY.md` for the full model.
 
-   - The URL is just a public endpoint
-   - The anon key is protected by Row Level Security (RLS) policies
-   - Vercel environment variables are encrypted and secure
-
-   The app fails at startup with a clear error if either variable is
-   missing or still set to a placeholder value.
+   The app fails at startup with a clear error if the Supabase URL or anon
+   key is missing or still set to a placeholder value; admin routes return
+   errors if the service role key or admin secret is misconfigured.
 
 ### 5. Run the Development Server
 
@@ -90,8 +93,7 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 pulse/
 ├── app/                    # Next.js App Router pages
 │   ├── page.tsx           # Main form page
-│   ├── edit/              # Edit/search page
-│   ├── admin/             # Admin panel
+│   ├── edit/              # Edit page (admin secret required to save)
 │   ├── export/            # Export page
 │   └── api/               # API routes
 ├── components/            # React components
@@ -111,22 +113,28 @@ pulse/
 4. Enter action item description and optional notes
 5. Click "Submit Action Item"
 
-### Editing Action Items
+### Editing Action Items (admin)
 
-1. Navigate to the "Edit Items" page
-2. Enter your name (exact match required)
-3. Click "Search"
-4. Click "Edit" on any item you want to modify
-5. Update the fields and click "Update Action Item"
+1. Navigate to the "Edit Items" page — it lists all action items
+2. Click "Edit" on the item you want to modify, then "Edit" again on the detail card
+3. Update the fields and click "Update Action Item"
+4. On first save you'll be prompted for the admin secret (the `ADMIN_SECRET`
+   value); it's kept in `sessionStorage` for the rest of the tab session
 
-### Managing Dropdowns (Admin)
+### Managing Dropdowns (admin, API only)
 
-1. Navigate to the "Admin" page
-2. Use the four sections to manage:
-   - **Sites**: Add, edit, or delete site options
-   - **Categories**: Add, edit, or delete category options
-   - **Sub-Categories**: Add, edit, or delete sub-category options
-   - **Statuses**: Add, edit, or delete status options
+There is no dropdown-management UI. Sites, categories, sub-categories, and
+statuses are managed by calling the API directly with the admin secret, e.g.:
+
+```powershell
+curl -X POST https://your-app.vercel.app/api/sites `
+  -H "Content-Type: application/json" `
+  -H "x-admin-secret: your_admin_secret" `
+  -d '{"name": "New Site"}'
+```
+
+The same pattern applies to `PUT`/`DELETE` on `/api/sites/[id]`,
+`/api/categories`, `/api/sub-categories`, and `/api/statuses`.
 
 ### Exporting Data
 
@@ -199,8 +207,7 @@ npm run test:e2e:ui
 The tests cover:
 
 - Form submission
-- Editing action items
-- Admin dropdown management
+- Editing action items (uses `ADMIN_SECRET` from `.env.local` for the protected routes)
 - Export functionality
 - Navigation between pages
 
@@ -210,18 +217,23 @@ The tests cover:
 
 1. Push your code to GitHub
 2. Import your repository in [Vercel](https://vercel.com)
-3. Add your environment variables in Vercel project settings
+3. Add all four environment variables (`SUPABASE_URL`, `SUPABASE_ANON_KEY`,
+   `SUPABASE_SERVICE_ROLE_KEY`, `ADMIN_SECRET`) in Vercel project settings
 4. Deploy!
 
 The application is optimized for Vercel's free tier.
 
 ## Environment Variables
 
-| Variable                        | Description                 | Required | Security Note                    |
-| ------------------------------- | --------------------------- | -------- | -------------------------------- |
-| `NEXT_PUBLIC_SUPABASE_URL`      | Your Supabase project URL   | Yes      | Safe - Public URL only           |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Your Supabase anonymous key | Yes      | Safe - Protected by RLS policies |
-| `PLAYWRIGHT_TEST_BASE_URL`      | Base URL for E2E tests      | Optional | Development only                 |
+All variables are server-only — none are exposed to the browser.
+
+| Variable                    | Description                              | Required | Security Note                                  |
+| --------------------------- | ---------------------------------------- | -------- | ---------------------------------------------- |
+| `SUPABASE_URL`              | Your Supabase project URL                | Yes      | Low sensitivity, but kept server-side          |
+| `SUPABASE_ANON_KEY`         | Your Supabase anonymous key              | Yes      | Constrained by RLS (read + submit only)        |
+| `SUPABASE_SERVICE_ROLE_KEY` | Service role key for admin routes        | Yes      | **Secret — bypasses RLS entirely**             |
+| `ADMIN_SECRET`              | Shared secret gating destructive routes  | Yes      | **Secret — grants edit/delete via the API**    |
+| `PLAYWRIGHT_TEST_BASE_URL`  | Base URL for E2E tests                   | Optional | Development only                               |
 
 ## Database Schema
 
@@ -246,8 +258,9 @@ See `supabase/migrations/001_initial_schema.sql` for the complete schema.
 ### Database Connection Issues
 
 - Verify your Supabase credentials in `.env.local`
-- Check that the database schema has been created
-- Ensure Row Level Security (RLS) is disabled or proper policies are set
+- Check that the database schema has been created (both migration files)
+- If edits/deletes fail with 401, check the `x-admin-secret` header matches `ADMIN_SECRET`
+- If admin routes fail with 500, verify `SUPABASE_SERVICE_ROLE_KEY` is set to the real key
 
 ### Form Not Submitting
 

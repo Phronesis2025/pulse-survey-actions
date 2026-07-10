@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getStatuses } from '@/lib/db';
-import { supabase } from '@/lib/supabase';
+import { requireAdmin, createAdminClient } from '@/lib/admin';
 import { TABLES } from '@/lib/db';
 
 // GET - Get all statuses
@@ -17,8 +17,11 @@ export async function GET() {
   }
 }
 
-// POST - Create new status
+// POST - Create new status (admin only)
 export async function POST(request: NextRequest) {
+  const unauthorized = requireAdmin(request);
+  if (unauthorized) return unauthorized;
+
   try {
     const body = await request.json();
     const { name } = body;
@@ -27,7 +30,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: 'Name is required' }, { status: 400 });
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await createAdminClient()
       .from(TABLES.STATUSES)
       .insert({ name: name.trim() })
       .select()

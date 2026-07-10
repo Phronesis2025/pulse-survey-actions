@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { requireAdmin, createAdminClient } from '@/lib/admin';
 import { TABLES } from '@/lib/db';
 
-// PUT - Update site
+// PUT - Update site (admin only)
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const unauthorized = requireAdmin(request);
+  if (unauthorized) return unauthorized;
+
   try {
     const { id } = await params;
     const body = await request.json();
@@ -16,7 +19,7 @@ export async function PUT(
       return NextResponse.json({ message: 'Name is required' }, { status: 400 });
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await createAdminClient()
       .from(TABLES.SITES)
       .update({ name: name.trim() })
       .eq('id', id)
@@ -40,15 +43,18 @@ export async function PUT(
   }
 }
 
-// DELETE - Delete site
+// DELETE - Delete site (admin only)
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const unauthorized = requireAdmin(request);
+  if (unauthorized) return unauthorized;
+
   try {
     const { id } = await params;
 
-    const { error } = await supabase
+    const { error } = await createAdminClient()
       .from(TABLES.SITES)
       .delete()
       .eq('id', id);

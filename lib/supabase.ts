@@ -1,15 +1,19 @@
-// Supabase client configuration
+// Supabase client configuration (server-only)
+//
+// These env vars intentionally do NOT use the NEXT_PUBLIC_ prefix: all
+// database access goes through Next.js API routes, so the browser never
+// needs the Supabase URL or anon key. Keeping the prefix off prevents
+// Next.js from inlining them into client bundles.
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-// These will be set via environment variables
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+const supabaseUrl = process.env.SUPABASE_URL || '';
+const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || '';
 
 // Fail loudly at module load if the Supabase env vars are missing or still
 // set to placeholder values, instead of surfacing as confusing fetch errors
 // at request time.
-function assertConfigured(name: string, value: string): void {
-  const placeholderPatterns = [/placeholder/i, /your[-_]?project/i, /your[-_]?anon[-_]?key/i];
+export function assertConfigured(name: string, value: string): void {
+  const placeholderPatterns = [/placeholder/i, /^your[-_]/i, /your[-_]?project/i];
   if (!value) {
     throw new Error(
       `Missing required environment variable ${name}. ` +
@@ -24,11 +28,9 @@ function assertConfigured(name: string, value: string): void {
   }
 }
 
-assertConfigured('NEXT_PUBLIC_SUPABASE_URL', supabaseUrl);
-assertConfigured('NEXT_PUBLIC_SUPABASE_ANON_KEY', supabaseAnonKey);
+assertConfigured('SUPABASE_URL', supabaseUrl);
+assertConfigured('SUPABASE_ANON_KEY', supabaseAnonKey);
 
-// Create a single supabase client for interacting with your database
+// Anon client: used by public routes (all GETs, POST /api/action-items).
+// Constrained by the RLS policies in supabase/migrations/002_harden_rls.sql.
 export const supabase: SupabaseClient = createClient(supabaseUrl, supabaseAnonKey);
-
-// Note: Service role key is not needed for this application
-// All operations use the anon key with Row Level Security policies

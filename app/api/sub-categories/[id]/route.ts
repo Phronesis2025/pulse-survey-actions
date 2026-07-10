@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { requireAdmin, createAdminClient } from '@/lib/admin';
 import { TABLES } from '@/lib/db';
 
-// PUT - Update sub-category
+// PUT - Update sub-category (admin only)
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const unauthorized = requireAdmin(request);
+  if (unauthorized) return unauthorized;
+
   try {
     const { id } = await params;
     const body = await request.json();
@@ -16,7 +19,7 @@ export async function PUT(
       return NextResponse.json({ message: 'Name is required' }, { status: 400 });
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await createAdminClient()
       .from(TABLES.SUB_CATEGORIES)
       .update({ name: name.trim() })
       .eq('id', id)
@@ -35,15 +38,18 @@ export async function PUT(
   }
 }
 
-// DELETE - Delete sub-category
+// DELETE - Delete sub-category (admin only)
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const unauthorized = requireAdmin(request);
+  if (unauthorized) return unauthorized;
+
   try {
     const { id } = await params;
 
-    const { error } = await supabase
+    const { error } = await createAdminClient()
       .from(TABLES.SUB_CATEGORIES)
       .delete()
       .eq('id', id);

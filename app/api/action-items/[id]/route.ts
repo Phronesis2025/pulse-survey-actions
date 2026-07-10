@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getActionItemById, updateActionItem } from '@/lib/db';
-import { supabase } from '@/lib/supabase';
 import { TABLES } from '@/lib/db';
+import { requireAdmin, createAdminClient } from '@/lib/admin';
 import type { ActionItemFormData } from '@/types';
 
 // GET - Get action item by ID
@@ -27,11 +27,14 @@ export async function GET(
   }
 }
 
-// PUT - Update action item
+// PUT - Update action item (admin only)
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const unauthorized = requireAdmin(request);
+  if (unauthorized) return unauthorized;
+
   try {
     const { id } = await params;
     const body: Partial<ActionItemFormData> = await request.json();
@@ -42,7 +45,7 @@ export async function PUT(
       return NextResponse.json({ message: 'Action item not found' }, { status: 404 });
     }
 
-    const updatedItem = await updateActionItem(id, body);
+    const updatedItem = await updateActionItem(id, body, createAdminClient());
     return NextResponse.json(updatedItem);
   } catch (error) {
     console.error('Error updating action item:', error);
@@ -53,15 +56,18 @@ export async function PUT(
   }
 }
 
-// DELETE - Delete action item
+// DELETE - Delete action item (admin only)
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const unauthorized = requireAdmin(request);
+  if (unauthorized) return unauthorized;
+
   try {
     const { id } = await params;
 
-    const { error } = await supabase
+    const { error } = await createAdminClient()
       .from(TABLES.ACTION_ITEMS)
       .delete()
       .eq('id', id);

@@ -1,6 +1,12 @@
 import { test, expect } from '@playwright/test';
 import { testData, waitForApiCall } from './fixtures';
 
+// Admin secret for the protected PUT/DELETE routes; loaded from .env.local
+// by playwright.config.ts. Sent as the x-admin-secret header for cleanup
+// and injected into sessionStorage for the browser-side edit flow.
+const ADMIN_SECRET = process.env.ADMIN_SECRET || '';
+const adminHeaders = { 'x-admin-secret': ADMIN_SECRET };
+
 // Each test that creates rows uses a unique user name and registers it here;
 // afterEach deletes exactly those rows via the API so no test data persists.
 // Names must be unique per test because tests may run in parallel workers.
@@ -19,7 +25,7 @@ test.afterEach(async ({ request }) => {
     if (!res.ok()) continue;
     const items: { id: string }[] = await res.json();
     for (const item of items) {
-      await request.delete(`/api/action-items/${item.id}`);
+      await request.delete(`/api/action-items/${item.id}`, { headers: adminHeaders });
     }
   }
 });
@@ -68,7 +74,7 @@ test.describe('Action Items', () => {
     await page.waitForTimeout(2000);
 
     // Check that the page shows action items (or "No action items found" message)
-    const bodyText = await page.textContent('body').catch(() => '');
+    const bodyText = (await page.textContent('body').catch(() => '')) ?? '';
     const hasItems = bodyText.includes('Showing') || bodyText.includes('action item');
     const hasNoItems = bodyText.includes('No action items found');
     
@@ -77,6 +83,13 @@ test.describe('Action Items', () => {
   });
 
   test('should edit an existing action item', async ({ page, request }) => {
+    // The edit page reads the admin secret from sessionStorage and sends it
+    // as the x-admin-secret header on PUT; seed it so no prompt appears.
+    await page.addInitScript(
+      (secret) => window.sessionStorage.setItem('pulse_admin_secret', secret),
+      ADMIN_SECRET
+    );
+
     // First, create an item to edit
     const userName = uniqueUserName();
     await page.goto('/');

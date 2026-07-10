@@ -7,6 +7,9 @@ import EditItemForm from '@/components/EditItemForm';
 import { getStatusBadgeClasses } from '@/lib/statusColors';
 import type { ActionItem, ActionItemFormData } from '@/types';
 
+// sessionStorage key for the admin secret; e2e tests inject it here too
+const ADMIN_SECRET_STORAGE_KEY = 'pulse_admin_secret';
+
 export default function EditPage() {
   const [actionItems, setActionItems] = useState<ActionItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -34,12 +37,42 @@ export default function EditPage() {
     }
   };
 
+  // Minimal admin unlock: PUT /api/action-items/[id] is gated by an
+  // x-admin-secret header, so prompt for the secret and keep it in
+  // sessionStorage (not localStorage — it should die with the tab).
+  // Tradeoff: window.prompt + sessionStorage is deliberately crude. It is a
+  // convenience gate for a demo app, not real auth — the server-side
+  // requireAdmin() check and the RLS policies are what actually protect the
+  // data; anything stored in the browser is readable by the user anyway.
+  const getAdminSecret = (): string | null => {
+    let secret = sessionStorage.getItem(ADMIN_SECRET_STORAGE_KEY);
+    if (!secret) {
+      secret = window.prompt('Enter the admin secret to edit action items:');
+      if (secret) sessionStorage.setItem(ADMIN_SECRET_STORAGE_KEY, secret);
+    }
+    return secret;
+  };
+
   const handleUpdate = async (id: string, data: Partial<ActionItemFormData>) => {
+    const secret = getAdminSecret();
+    if (!secret) {
+      throw new Error('Editing requires the admin secret.');
+    }
+
     const response = await fetch(`/api/action-items/${id}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-admin-secret': secret,
+      },
       body: JSON.stringify(data),
     });
+
+    if (response.status === 401) {
+      // Wrong secret: forget it so the next attempt prompts again
+      sessionStorage.removeItem(ADMIN_SECRET_STORAGE_KEY);
+      throw new Error('Invalid admin secret — the update was rejected (401). Click Update again to re-enter it.');
+    }
 
     if (!response.ok) {
       const error = await response.json();

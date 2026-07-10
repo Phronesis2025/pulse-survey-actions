@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAllSubCategories, getSubCategories } from '@/lib/db';
-import { supabase } from '@/lib/supabase';
+import { requireAdmin, createAdminClient } from '@/lib/admin';
 import { TABLES } from '@/lib/db';
 
 // GET - Get all sub-categories or filter by category_id
@@ -25,8 +25,11 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST - Create new sub-category
+// POST - Create new sub-category (admin only)
 export async function POST(request: NextRequest) {
+  const unauthorized = requireAdmin(request);
+  if (unauthorized) return unauthorized;
+
   try {
     const body = await request.json();
     const { name, category_id } = body;
@@ -38,7 +41,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: 'Category ID is required' }, { status: 400 });
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await createAdminClient()
       .from(TABLES.SUB_CATEGORIES)
       .insert({ name: name.trim(), category_id })
       .select()

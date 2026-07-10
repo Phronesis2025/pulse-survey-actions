@@ -1,66 +1,80 @@
-# Security Information
+# Security Model
 
-## Environment Variables Security
+This is a demo/portfolio app with no user accounts. The model is deliberately
+simple and layered: **public read and submit, admin-secret-gated mutations,
+with Row Level Security as the database-level backstop.**
 
-### Safe to Use in Vercel
+## Overview
 
-All environment variables used in this application are **safe** to store in Vercel:
+| Operation | Who | Enforced by |
+| --- | --- | --- |
+| Read anything (all GET routes) | Anyone | Anon RLS `SELECT` policies |
+| Submit an action item (`POST /api/action-items`) | Anyone | Anon RLS `INSERT` policy on `action_items` |
+| Edit/delete action items (`PUT`/`DELETE /api/action-items/[id]`) | Admin secret holders | `requireAdmin()` + service-role client |
+| Create/edit/delete sites, categories, sub-categories, statuses | Admin secret holders | `requireAdmin()` + service-role client |
 
-1. **`NEXT_PUBLIC_SUPABASE_URL`**
-   - ✅ **Safe**: This is just a public URL to your Supabase project
-   - It's designed to be public and is visible in the browser
-   - No sensitive data is exposed
+All database access goes through Next.js API routes — the browser never talks
+to Supabase directly.
 
-2. **`NEXT_PUBLIC_SUPABASE_ANON_KEY`**
-   - ✅ **Safe**: This is the "anonymous" or "public" key from Supabase
-   - It's designed to be used in client-side code
-   - **Protected by Row Level Security (RLS)**: Even if someone gets this key, they can only access data according to your RLS policies
-   - The key itself doesn't grant admin access
+## Layer 1: API-level admin gate
 
-### Vercel Security
+Every destructive route calls `requireAdmin()` (`lib/admin.ts`) before doing
+anything. It compares the `x-admin-secret` request header against the
+server-only `ADMIN_SECRET` env var using a constant-time comparison
+(`crypto.timingSafeEqual` over SHA-256 digests, so length differences don't
+leak timing either). Failures return a generic `401 Unauthorized` that does
+not reveal whether the secret is configured.
 
-- ✅ **Encrypted Storage**: All environment variables in Vercel are encrypted at rest
-- ✅ **Access Control**: Only project members with appropriate permissions can view/edit variables
-- ✅ **Not in Code**: Variables are never committed to your repository
-- ✅ **Build-time Only**: Variables are injected during build/deployment, not stored in the final bundle (except `NEXT_PUBLIC_*` which are intentionally public)
+Routes that pass the gate create a **per-request** Supabase client with the
+`service_role` key (`createAdminClient()`), which bypasses RLS. That client
+is never created at module level and never shared with public code paths.
 
-### Database Security
+The `/edit` page provides a minimal unlock: it prompts for the secret, keeps
+it in `sessionStorage` (cleared when the tab closes), and sends it as the
+header. This is a convenience for a demo app, not real authentication — the
+server-side check is what actually protects the data.
 
-This application uses **Row Level Security (RLS)** policies in Supabase:
+## Layer 2: Row Level Security (database backstop)
 
-- All tables have RLS enabled
-- Permissive policies allow access for internal use
-- The anon key can only perform operations allowed by RLS policies
-- No admin/service role key is used (removed for security)
+Even if the API layer were bypassed or misconfigured, the anon key can only
+do what the RLS policies in `supabase/migrations/002_harden_rls.sql` allow:
 
-### Best Practices
+- `SELECT` on all five tables (read is public)
+- `INSERT` on `action_items` only (the public submit form)
+- **Nothing else.** No anon policy exists for `UPDATE` or `DELETE` on any
+  table, or for `INSERT` on the lookup tables, so PostgreSQL denies them by
+  default.
 
-1. **Never commit** `.env.local` or `.env` files to Git (already in `.gitignore`)
-2. **Use Vercel's environment variables** for production secrets
-3. **Rotate keys** if you suspect they've been compromised
-4. **Monitor Supabase logs** for unusual activity
-5. **Keep RLS enabled** - it provides an additional security layer
+## Environment variables
 
-### What If Someone Gets the Anon Key?
+All four variables are **server-only** — none use the `NEXT_PUBLIC_` prefix,
+so none are compiled into client-side JavaScript.
 
-If someone obtains your anon key:
-- ✅ They can only access data according to your RLS policies
-- ✅ They **cannot** bypass RLS (that requires the service role key, which we don't use)
-- ✅ They **cannot** access other Supabase projects
-- ✅ They **cannot** modify your Supabase project settings
+| Variable | Sensitivity |
+| --- | --- |
+| `SUPABASE_URL` | Low — just the project endpoint, but still kept server-side |
+| `SUPABASE_ANON_KEY` | Low — limited to the anon RLS policies above; kept server-side anyway since the browser never needs it |
+| `SUPABASE_SERVICE_ROLE_KEY` | **High — bypasses RLS entirely. Treat like a database password.** |
+| `ADMIN_SECRET` | **High — grants all destructive operations via the API.** |
 
-### Additional Security Recommendations
+In production, set them in Vercel's project settings (encrypted at rest,
+never committed to the repository). Locally they live in `.env.local`, which
+is gitignored.
 
-1. **Monitor Access**: Check Supabase dashboard regularly for unusual activity
-2. **Rate Limiting**: Consider adding rate limiting to prevent abuse
-3. **Input Validation**: All user inputs are validated (already implemented)
-4. **HTTPS Only**: Vercel automatically uses HTTPS for all deployments
+## What an attacker gets at each layer
 
-## Summary
+- **Anonymous web user**: can read everything and submit action items —
+  exactly what the app is for. Cannot modify or delete anything.
+- **Someone who somehow obtains the anon key**: same as above; the key is
+  constrained by RLS. (It shouldn't leak — it's server-only — but it's not a
+  catastrophe if it does.)
+- **Someone who obtains `ADMIN_SECRET` or `SUPABASE_SERVICE_ROLE_KEY`**: full
+  write access. Rotate immediately (regenerate the secret / rotate the key in
+  Supabase → Settings → API) if you suspect compromise.
 
-✅ **It's safe to add these variables to Vercel**
-- The variables are designed to be public
-- They're protected by RLS policies
-- Vercel stores them securely
-- No sensitive admin keys are used
+## Known limitations (accepted for a demo app)
 
+- A single shared admin secret, not per-user auth or audit trails.
+- No rate limiting on the public submit endpoint.
+- The admin secret transits as a request header — fine over HTTPS (Vercel
+  enforces it), but do not run this over plain HTTP.

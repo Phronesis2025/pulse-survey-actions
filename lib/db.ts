@@ -1,5 +1,6 @@
 // Database schema and helper functions
 import { supabase } from './supabase';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ActionItem, Site, Category, SubCategory, Status, ActionItemFormData } from '@/types';
 
 // Database table names
@@ -122,8 +123,13 @@ export async function getActionItemById(id: string): Promise<ActionItem | null> 
   return data;
 }
 
-// Helper function to update an action item
-export async function updateActionItem(id: string, formData: Partial<ActionItemFormData>): Promise<ActionItem> {
+// Helper function to update an action item. Anon RLS denies UPDATE, so the
+// admin route passes in a service-role client; `client` exists only for that.
+export async function updateActionItem(
+  id: string,
+  formData: Partial<ActionItemFormData>,
+  client: SupabaseClient = supabase
+): Promise<ActionItem> {
   const updates: Record<string, unknown> = {
     ...formData,
     updated_at: new Date().toISOString(),
@@ -137,7 +143,7 @@ export async function updateActionItem(id: string, formData: Partial<ActionItemF
     updates.notes = formData.notes || null;
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await client
     .from(TABLES.ACTION_ITEMS)
     .update(updates)
     .eq('id', id)

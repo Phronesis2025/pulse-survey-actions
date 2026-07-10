@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCategories } from '@/lib/db';
-import { supabase } from '@/lib/supabase';
+import { requireAdmin, createAdminClient } from '@/lib/admin';
 import { TABLES } from '@/lib/db';
 
 // GET - Get all categories
@@ -17,8 +17,11 @@ export async function GET() {
   }
 }
 
-// POST - Create new category
+// POST - Create new category (admin only)
 export async function POST(request: NextRequest) {
+  const unauthorized = requireAdmin(request);
+  if (unauthorized) return unauthorized;
+
   try {
     const body = await request.json();
     const { name } = body;
@@ -27,7 +30,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: 'Name is required' }, { status: 400 });
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await createAdminClient()
       .from(TABLES.CATEGORIES)
       .insert({ name: name.trim() })
       .select()
