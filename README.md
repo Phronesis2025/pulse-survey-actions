@@ -4,7 +4,15 @@
 
 A full-stack Next.js + Supabase app for collecting and managing facilities action items from workplace pulse-survey feedback. Anyone can submit and browse items; everything destructive sits behind an admin secret and locked-down Row Level Security. Built as an engineering case study: this README documents not just *what* it does, but *why* it's built the way it is.
 
-<!-- Screenshots: docs/screenshots/dashboard-desktop.png (hero), dashboard-mobile.png, submit-form.png -->
+**Live demo:** https://pulse-survey-actions.vercel.app
+
+![Dashboard — table view with overdue items surfaced first](docs/screenshots/dashboard-desktop.png)
+
+<p>
+  <img src="docs/screenshots/dashboard-mobile.png" alt="Dashboard on mobile — stacked compact list" width="31%" />
+  &nbsp;
+  <img src="docs/screenshots/submit-form.png" alt="Public submit form" width="66%" />
+</p>
 
 ## The app in one paragraph
 
@@ -100,7 +108,7 @@ The suite covers submission, the admin-gated edit flow (the admin secret is read
 There is no admin UI for lookup tables by design (see tradeoffs). Manage them via the API with the secret:
 
 ```powershell
-curl -X POST https://your-app.vercel.app/api/sites `
+curl -X POST https://pulse-survey-actions.vercel.app/api/sites `
   -H "Content-Type: application/json" `
   -H "x-admin-secret: your_admin_secret" `
   -d '{"name": "New Site"}'
