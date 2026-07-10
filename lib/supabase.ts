@@ -5,20 +5,30 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
-// Create a function to get the supabase client
-// This allows us to handle missing env vars during build time
-function getSupabaseClient(): SupabaseClient {
-  // During build, if env vars aren't set, use placeholder values that Supabase will accept
-  // The client won't work for actual operations, but it won't crash the build
-  const url = supabaseUrl || 'https://placeholder.supabase.co';
-  const key = supabaseAnonKey || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYWNlaG9sZGVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE2NDUxOTIwMDAsImV4cCI6MTk2MDc2ODAwMH0.placeholder';
-  
-  return createClient(url, key);
+// Fail loudly at module load if the Supabase env vars are missing or still
+// set to placeholder values, instead of surfacing as confusing fetch errors
+// at request time.
+function assertConfigured(name: string, value: string): void {
+  const placeholderPatterns = [/placeholder/i, /your[-_]?project/i, /your[-_]?anon[-_]?key/i];
+  if (!value) {
+    throw new Error(
+      `Missing required environment variable ${name}. ` +
+      `Set it in .env.local (see .env.example) or in your deployment's environment settings.`
+    );
+  }
+  if (placeholderPatterns.some((p) => p.test(value))) {
+    throw new Error(
+      `Environment variable ${name} is still set to a placeholder value. ` +
+      `Replace it with the real value from your Supabase project (Settings → API).`
+    );
+  }
 }
 
+assertConfigured('NEXT_PUBLIC_SUPABASE_URL', supabaseUrl);
+assertConfigured('NEXT_PUBLIC_SUPABASE_ANON_KEY', supabaseAnonKey);
+
 // Create a single supabase client for interacting with your database
-export const supabase = getSupabaseClient();
+export const supabase: SupabaseClient = createClient(supabaseUrl, supabaseAnonKey);
 
 // Note: Service role key is not needed for this application
 // All operations use the anon key with Row Level Security policies
-

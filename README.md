@@ -14,7 +14,7 @@ A full-stack Next.js application for collecting and managing facilities maintena
 
 ## Technology Stack
 
-- **Frontend/Backend**: Next.js 14+ with TypeScript and App Router
+- **Frontend/Backend**: Next.js 16 with TypeScript and App Router
 - **Database**: PostgreSQL via Supabase (free tier)
 - **Styling**: Tailwind CSS
 - **Testing**: Playwright for E2E tests
@@ -42,7 +42,8 @@ npm install
 3. Go to **Settings** → **API** to get your:
    - Project URL
    - Anon/public key
-   - Service role key (optional, for server-side operations)
+
+   (The service role key is not used by this application.)
 
 ### 3. Create Database Schema
 
@@ -71,6 +72,9 @@ npm install
    - The URL is just a public endpoint
    - The anon key is protected by Row Level Security (RLS) policies
    - Vercel environment variables are encrypted and secure
+
+   The app fails at startup with a clear error if either variable is
+   missing or still set to a placeholder value.
 
 ### 5. Run the Development Server
 
