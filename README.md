@@ -1,132 +1,103 @@
-# Facilities Feedback - Action Item Management System
+# Pulse — Survey Action Tracker
 
 [![CI](https://github.com/Phronesis2025/pulse-survey-actions/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Phronesis2025/pulse-survey-actions/actions/workflows/ci.yml)
 
-A full-stack Next.js application for collecting and managing facilities maintenance action items from survey feedback. Anyone can submit and browse action items; editing and deleting are protected by an admin secret (see `SECURITY.md`). The system includes Excel export and Power BI database connection support.
+A full-stack Next.js + Supabase app for collecting and managing facilities action items from workplace pulse-survey feedback. Anyone can submit and browse items; everything destructive sits behind an admin secret and locked-down Row Level Security. Built as an engineering case study: this README documents not just *what* it does, but *why* it's built the way it is.
 
-## Features
+<!-- Screenshots: docs/screenshots/dashboard-desktop.png (hero), dashboard-mobile.png, submit-form.png -->
 
-- ✅ **Submit Action Items**: Clean, intuitive form for submitting facilities maintenance action items (open to everyone)
-- ✅ **Edit Existing Items**: The Edit page lists all action items; modifying them requires the admin secret
-- ✅ **Layered Security**: Admin-secret-gated API mutations backed by restrictive Row Level Security policies
-- ✅ **Excel Export**: Export all action items to Excel format
-- ✅ **Power BI Integration**: Direct database connection support for Power BI
-- ✅ **E2E Testing**: Comprehensive Playwright tests for all functionality
-- ✅ **Modern UI**: Clean, professional design inspired by Solara AI
+## The app in one paragraph
 
-## Technology Stack
+Employees submit facilities issues ("Improve break room ventilation") through a public form. Each item carries a site, category → sub-category, status, optional target date, and notes. A dashboard shows the live picture — status distribution, overdue items surfaced first, filter/search across everything — in a dense sortable table or a card grid. Admins edit items and manage lookup tables via secret-gated API routes. Data exports to Excel, and Power BI can connect straight to Postgres.
 
-- **Frontend/Backend**: Next.js 16 with TypeScript and App Router
-- **Database**: PostgreSQL via Supabase (free tier)
-- **Styling**: Tailwind CSS
-- **Testing**: Playwright for E2E tests
-- **Excel Export**: xlsx library
-- **Deployment**: Vercel (free tier compatible)
+## Engineering case study
 
-## Prerequisites
+The project went through four deliberate phases, each a commit (or two) on `main`:
 
-- Node.js 18+ installed
-- npm or yarn package manager
-- A Supabase account (free tier works)
+### 1. Correctness first
 
-## Setup Instructions
+The revived codebase had a *vacuous* e2e edit test — it clicked through the UI but asserted nothing that could fail, and green tests that can't fail are worse than no tests. Rewriting it to verify persistence through the API exposed a real bug: the update path sent `""` for a cleared date into a Postgres `DATE` column. Fix: coerce empty strings to `null`, matching the create path.
 
-### 1. Clone and Install Dependencies
+### 2. Layered security
+
+The app originally shipped allow-all RLS policies with the Supabase anon key exposed to the browser via `NEXT_PUBLIC_` env vars. The redesign enforces one rule at two layers, so a mistake in either is caught by the other:
+
+- **API layer** — every destructive route calls `requireAdmin()` (`lib/admin.ts`): a constant-time comparison (`crypto.timingSafeEqual` over SHA-256 digests) of the `x-admin-secret` header against a server-only secret. Failures return an uninformative 401.
+- **Database layer** — RLS policies (`supabase/migrations/002_harden_rls.sql`) allow anon exactly two things: `SELECT` everywhere and `INSERT` into `action_items`. Nothing else. Admin routes construct a per-request `service_role` client *after* the gate passes — never module-level, never shared with public code paths.
+- **Key isolation** — all env vars are server-only (no `NEXT_PUBLIC_`); the browser never talks to Supabase. Verified by grepping client bundles for the key material after build.
+
+Full model and threat notes: [SECURITY.md](SECURITY.md).
+
+### 3. Product polish
+
+A read-only dashboard (`/dashboard`) designed for density and hierarchy: a slim summary strip (totals, overdue count, clickable per-status filter pills, proportional distribution bar), then a compact sortable table where 15+ items fit one desktop screen. Overdue rows are tinted and flagged, rows expand inline for details, and a card-grid view sits behind a toggle persisted per tab. The status accent palette was validated programmatically for colorblind-safe adjacency and contrast rather than eyeballed, and every color is paired with a text label. Below `sm`, the table becomes a stacked list — no horizontal scrolling.
+
+A seed script (`npm run seed`) creates ~15 realistic items **through the public API** — the same path real submissions take — so RLS, validation, and route logic get exercised on every re-seed. Overdue offsets are relative to run time, so the demo state stays interesting forever.
+
+### 4. CI as a gate, not a decoration
+
+Every push and PR to `main` runs typecheck, lint, build, and the full 13-test Playwright suite against a production server (`next start`, not the dev server). Because e2e runs against a real shared database, the workflow uses a per-ref concurrency group so runs never overlap, and test cleanup is *loud*: a failed cleanup DELETE throws and fails the test rather than silently stranding rows. Test rows are registered for cleanup **before** creation and swept by name, so a test that dies mid-body still gets cleaned.
+
+## Architecture
+
+```
+Browser ──── fetch ────► Next.js API routes ────► Supabase Postgres
+   │                        │        │
+   │  public: GET *, POST   │        └── anon client (RLS-constrained)
+   │  action-items          │
+   │                        └── admin: requireAdmin() gate, then
+   │  admin: + x-admin-         per-request service-role client
+   │  secret header             (bypasses RLS)
+```
+
+The browser never holds a database credential. The `/edit` page's "unlock" (a prompt stored in `sessionStorage`) is a convenience, not a security boundary — the server-side check is authoritative, and the tradeoff is documented in the code.
+
+## Tech stack
+
+Next.js 16 (App Router, TypeScript, Turbopack) · Supabase Postgres with RLS · Tailwind CSS 4 · Playwright · GitHub Actions · Vercel-ready
+
+## Getting started
 
 ```bash
 npm install
 ```
 
-### 2. Set Up Supabase
+1. Create a [Supabase](https://supabase.com) project (free tier works).
+2. In the SQL Editor, run `supabase/migrations/001_initial_schema.sql` (tables + dropdown data), then `supabase/migrations/002_harden_rls.sql` (locked-down policies).
+3. Copy `.env.example` to `.env.local` and fill in the values (Supabase → Settings → API):
 
-1. Go to [Supabase](https://supabase.com) and create a free account
-2. Create a new project
-3. Go to **Settings** → **API** to get your:
-   - Project URL
-   - Anon/public key
-   - Service role key (used only by admin-gated API routes; treat it like a database password)
+| Variable                    | Description                             | Sensitivity                                 |
+| --------------------------- | --------------------------------------- | ------------------------------------------- |
+| `SUPABASE_URL`              | Project URL                             | Low, but server-only anyway                 |
+| `SUPABASE_ANON_KEY`         | Anon key                                | Constrained by RLS (read + submit only)     |
+| `SUPABASE_SERVICE_ROLE_KEY` | Service-role key for admin routes       | **Secret — bypasses RLS entirely**          |
+| `ADMIN_SECRET`              | Shared secret gating destructive routes | **Secret — grants edit/delete via the API** |
 
-### 3. Create Database Schema
-
-1. In your Supabase project, go to **SQL Editor**
-2. Copy and paste the contents of `supabase/migrations/001_initial_schema.sql`
-3. Run the SQL script — this creates all tables and inserts dropdown data
-4. Then run `supabase/migrations/002_harden_rls.sql` — this replaces the
-   permissive RLS policies with the locked-down ones the app expects
-   (public read + submit only; all other writes require the service role)
-
-### 4. Configure Environment Variables
-
-1. Copy `.env.example` to `.env.local`:
-
-   ```bash
-   cp .env.example .env.local
-   ```
-
-2. Edit `.env.local` and add your credentials:
-
-   ```
-   SUPABASE_URL=https://your-project.supabase.co
-   SUPABASE_ANON_KEY=your_anon_key_here
-   SUPABASE_SERVICE_ROLE_KEY=your_service_role_key_here
-   ADMIN_SECRET=a_long_random_string
-   ```
-
-   **Security Note**: All four variables are server-only (no `NEXT_PUBLIC_`
-   prefix), so none of them are compiled into browser JavaScript. The browser
-   never talks to Supabase directly — everything goes through the API routes.
-   See `SECURITY.md` for the full model.
-
-   The app fails at startup with a clear error if the Supabase URL or anon
-   key is missing or still set to a placeholder value; admin routes return
-   errors if the service role key or admin secret is misconfigured.
-
-### 5. Run the Development Server
+4. Run it:
 
 ```bash
-npm run dev
+npm run dev        # http://localhost:3000
+npm run seed       # optional: 15 realistic sample items via the public API
 ```
 
-Open [http://localhost:3000](http://localhost:3000) in your browser.
+The app fails at startup with a clear message if the Supabase URL or anon key is missing or still a placeholder.
 
-## Project Structure
+## Testing
 
-```
-pulse/
-├── app/                    # Next.js App Router pages
-│   ├── page.tsx           # Main form page
-│   ├── edit/              # Edit page (admin secret required to save)
-│   ├── export/            # Export page
-│   └── api/               # API routes
-├── components/            # React components
-├── lib/                   # Utility functions
-├── types/                 # TypeScript definitions
-├── e2e/                   # Playwright E2E tests
-└── supabase/              # Database migrations
+```bash
+npm run test:e2e       # 13 Playwright tests
+npm run test:e2e:ui    # interactive mode
 ```
 
-## Usage
+The suite covers submission, the admin-gated edit flow (the admin secret is read from `.env.local` and injected into `sessionStorage`), export, and navigation. Row-creating tests clean up after themselves through the admin DELETE route and fail loudly if cleanup doesn't stick.
 
-### Submitting Action Items
+## CI
 
-1. Navigate to the home page
-2. Fill in all required fields (marked with \*)
-3. Select site, category, sub-category, and status from dropdowns
-4. Enter action item description and optional notes
-5. Click "Submit Action Item"
+`.github/workflows/ci.yml` runs on every push/PR to `main`: `npm ci` → `tsc --noEmit` → lint → `next build` → Playwright (chromium) against the production build. Four repository secrets are required: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `ADMIN_SECRET`. On failure, the Playwright HTML report is uploaded as an artifact (7-day retention).
 
-### Editing Action Items (admin)
+## Admin operations
 
-1. Navigate to the "Edit Items" page — it lists all action items
-2. Click "Edit" on the item you want to modify, then "Edit" again on the detail card
-3. Update the fields and click "Update Action Item"
-4. On first save you'll be prompted for the admin secret (the `ADMIN_SECRET`
-   value); it's kept in `sessionStorage` for the rest of the tab session
-
-### Managing Dropdowns (admin, API only)
-
-There is no dropdown-management UI. Sites, categories, sub-categories, and
-statuses are managed by calling the API directly with the admin secret, e.g.:
+There is no admin UI for lookup tables by design (see tradeoffs). Manage them via the API with the secret:
 
 ```powershell
 curl -X POST https://your-app.vercel.app/api/sites `
@@ -135,163 +106,23 @@ curl -X POST https://your-app.vercel.app/api/sites `
   -d '{"name": "New Site"}'
 ```
 
-The same pattern applies to `PUT`/`DELETE` on `/api/sites/[id]`,
-`/api/categories`, `/api/sub-categories`, and `/api/statuses`.
+Same pattern for `PUT`/`DELETE` on `/api/sites/[id]`, `/api/categories`, `/api/sub-categories`, and `/api/statuses`. Editing action items has a UI at `/edit` (admin secret prompted on first save).
 
-### Exporting Data
+## Power BI
 
-1. Navigate to the "Export" page
-2. Use the search box to filter action items (optional)
-3. Click "Export to Excel" to download all data
-
-## Power BI Connection
-
-### Option 1: Direct Database Connection
-
-1. Open Power BI Desktop
-2. Click **Get Data** → **Database** → **PostgreSQL database**
-3. Enter your Supabase connection details:
-   - **Server**: `db.your-project-ref.supabase.co`
-   - **Database**: `postgres`
-   - **User**: `postgres`
-   - **Password**: (found in Supabase Settings → Database → Connection string)
-   - **Port**: `5432`
-4. Select the tables you want to import:
-   - `action_items`
-   - `sites`
-   - `categories`
-   - `sub_categories`
-   - `statuses`
-
-### Option 2: Connection String Format
-
-```
-Host=db.your-project-ref.supabase.co;Port=5432;Database=postgres;Username=postgres;Password=your_password
-```
-
-### Recommended Queries
-
-For a comprehensive view, create a query that joins all tables:
-
-```sql
-SELECT
-  ai.id,
-  ai.user_name,
-  s.name AS site_name,
-  c.name AS category_name,
-  sc.name AS sub_category_name,
-  ai.action_item,
-  ai.estimated_completion_date,
-  st.name AS status_name,
-  ai.notes,
-  ai.created_at,
-  ai.updated_at
-FROM action_items ai
-LEFT JOIN sites s ON ai.site_id = s.id
-LEFT JOIN categories c ON ai.category_id = c.id
-LEFT JOIN sub_categories sc ON ai.sub_category_id = sc.id
-LEFT JOIN statuses st ON ai.status_id = st.id
-ORDER BY ai.created_at DESC;
-```
-
-## Running Tests
-
-### E2E Tests with Playwright
-
-```bash
-# Run all E2E tests
-npm run test:e2e
-
-# Run tests with UI mode
-npm run test:e2e:ui
-```
-
-The tests cover:
-
-- Form submission
-- Editing action items (uses `ADMIN_SECRET` from `.env.local` for the protected routes)
-- Export functionality
-- Navigation between pages
+Connect Power BI Desktop directly to the Supabase Postgres instance (**Get Data → PostgreSQL**, host `db.<project-ref>.supabase.co`, database `postgres`, port `5432`) and join `action_items` against the four lookup tables. A ready-made join query lives in the schema comments of `001_initial_schema.sql`.
 
 ## Deployment
 
-### Deploy to Vercel
+Import the repo in [Vercel](https://vercel.com), add the same four environment variables in project settings, deploy. Free tiers of Vercel and Supabase are sufficient.
 
-1. Push your code to GitHub
-2. Import your repository in [Vercel](https://vercel.com)
-3. Add all four environment variables (`SUPABASE_URL`, `SUPABASE_ANON_KEY`,
-   `SUPABASE_SERVICE_ROLE_KEY`, `ADMIN_SECRET`) in Vercel project settings
-4. Deploy!
+## Known tradeoffs (accepted deliberately)
 
-The application is optimized for Vercel's free tier.
-
-## Environment Variables
-
-All variables are server-only — none are exposed to the browser.
-
-| Variable                    | Description                              | Required | Security Note                                  |
-| --------------------------- | ---------------------------------------- | -------- | ---------------------------------------------- |
-| `SUPABASE_URL`              | Your Supabase project URL                | Yes      | Low sensitivity, but kept server-side          |
-| `SUPABASE_ANON_KEY`         | Your Supabase anonymous key              | Yes      | Constrained by RLS (read + submit only)        |
-| `SUPABASE_SERVICE_ROLE_KEY` | Service role key for admin routes        | Yes      | **Secret — bypasses RLS entirely**             |
-| `ADMIN_SECRET`              | Shared secret gating destructive routes  | Yes      | **Secret — grants edit/delete via the API**    |
-| `PLAYWRIGHT_TEST_BASE_URL`  | Base URL for E2E tests                   | Optional | Development only                               |
-
-## Database Schema
-
-### Tables
-
-- **action_items**: Main table storing action items
-- **sites**: Available sites (managed via admin)
-- **categories**: Main categories (managed via admin)
-- **sub_categories**: Sub-categories linked to categories (managed via admin)
-- **statuses**: Action item statuses (managed via admin)
-
-See `supabase/migrations/001_initial_schema.sql` for the complete schema.
-
-## Free Tier Considerations
-
-- **Supabase**: 500MB database, 2GB bandwidth (free tier)
-- **Vercel**: Unlimited bandwidth, 100GB storage (free tier)
-- All functionality works within free tier limits
-
-## Troubleshooting
-
-### Database Connection Issues
-
-- Verify your Supabase credentials in `.env.local`
-- Check that the database schema has been created (both migration files)
-- If edits/deletes fail with 401, check the `x-admin-secret` header matches `ADMIN_SECRET`
-- If admin routes fail with 500, verify `SUPABASE_SERVICE_ROLE_KEY` is set to the real key
-
-### Form Not Submitting
-
-- Check browser console for errors
-- Verify API routes are working (check Network tab)
-- Ensure all required fields are filled
-
-### Dropdowns Not Loading
-
-- Check that placeholder data was inserted
-- Verify Supabase connection
-- Check browser console for API errors
-
-## Contributing
-
-This is a learning project. Feel free to modify and extend it for your needs!
+- **One shared admin secret, no user accounts** — right-sized for a demo/portfolio app; the layered design means upgrading to real auth later only changes the gate, not the data layer.
+- **`sessionStorage` + `window.prompt` unlock** — crude by design; it exists so the demo is usable, while the server stays the only enforcement point.
+- **No assignee column** — items carry the submitter (`user_name`); assignment context lives in notes. Adding a column is a small migration if the need becomes real.
+- **CI hits the real demo database** — mitigated by per-ref concurrency, unique test-row names, and fail-loud cleanup rather than a second database.
 
 ## License
 
-This project is open source and available for educational purposes.
-
-## Support
-
-For issues or questions:
-
-1. Check the troubleshooting section above
-2. Review Supabase and Next.js documentation
-3. Check browser console and server logs for errors
-
----
-
-**Built with ❤️ for facilities management teams**
+Open source, for educational purposes.
