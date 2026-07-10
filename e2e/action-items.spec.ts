@@ -18,15 +18,25 @@ function uniqueUserName(): string {
   return name;
 }
 
+// Cleanup must be loud: CI runs against the real demo database, so a failed
+// lookup or DELETE stranding rows should fail the test, not pass silently.
 test.afterEach(async ({ request }) => {
+  const failures: string[] = [];
   while (createdUserNames.length > 0) {
     const name = createdUserNames.pop()!;
     const res = await request.get(`/api/action-items?user_name=${encodeURIComponent(name)}`);
-    if (!res.ok()) continue;
+    if (!res.ok()) {
+      failures.push(`lookup failed (${res.status()}) for "${name}"`);
+      continue;
+    }
     const items: { id: string }[] = await res.json();
     for (const item of items) {
-      await request.delete(`/api/action-items/${item.id}`, { headers: adminHeaders });
+      const del = await request.delete(`/api/action-items/${item.id}`, { headers: adminHeaders });
+      if (!del.ok()) failures.push(`delete failed (${del.status()}) for ${item.id}`);
     }
+  }
+  if (failures.length > 0) {
+    throw new Error(`Test data cleanup failed — rows may be stranded in the demo DB: ${failures.join('; ')}`);
   }
 });
 

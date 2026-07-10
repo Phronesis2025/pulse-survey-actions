@@ -1,4 +1,5 @@
 // Test fixtures and utilities for E2E tests
+import type { Page } from '@playwright/test';
 
 export const testData = {
   user: {
@@ -30,7 +31,7 @@ export const testData = {
 };
 
 // Helper function to wait for API calls
-export async function waitForApiCall(page: any) {
+export async function waitForApiCall(page: Page) {
   await page.waitForTimeout(500); // Small delay for API calls
 }
 

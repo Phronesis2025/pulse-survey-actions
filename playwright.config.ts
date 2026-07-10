@@ -3,6 +3,9 @@ import { loadEnvConfig } from '@next/env';
 
 // Load .env.local the same way Next.js does, so the specs can read
 // ADMIN_SECRET (needed for the admin-gated edit/delete API calls).
+// In CI there is no .env.local: loadEnvConfig is a no-op with no env files,
+// and it never overrides variables already set in process.env, so secrets
+// injected by the CI job flow through untouched.
 loadEnvConfig(__dirname);
 
 /**
@@ -36,9 +39,11 @@ export default defineConfig({
     },
   ],
 
-  /* Run your local dev server before starting the tests */
+  /* Run your local dev server before starting the tests.
+     In CI, serve the production build instead (CI builds before testing):
+     it starts faster and tests what actually ships. */
   webServer: {
-    command: 'npm run dev',
+    command: process.env.CI ? 'npm run start' : 'npm run dev',
     url: 'http://localhost:3000',
     reuseExistingServer: !process.env.CI,
     timeout: 120 * 1000,

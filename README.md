@@ -1,5 +1,7 @@
 # Facilities Feedback - Action Item Management System
 
+[![CI](https://github.com/Phronesis2025/pulse-survey-actions/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Phronesis2025/pulse-survey-actions/actions/workflows/ci.yml)
+
 A full-stack Next.js application for collecting and managing facilities maintenance action items from survey feedback. Anyone can submit and browse action items; editing and deleting are protected by an admin secret (see `SECURITY.md`). The system includes Excel export and Power BI database connection support.
 
 ## Features
