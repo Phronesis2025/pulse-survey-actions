@@ -1,0 +1,52 @@
+name: Keepalive & Uptime
+
+# Runs twice a week (Mon & Thu). Two jobs in one:
+#   1. Keep-alive — hitting the public API issues a real Supabase query, which
+#      counts as database activity and stops the free-tier project from
+#      auto-pausing after ~7 idle days.
+#   2. Uptime check — the step fails loudly unless production returns HTTP 200
+#      with a valid JSON array, so a red X on this workflow means the site is
+#      down (or the database is paused/unreachable).
+#
+# The endpoint is public, so no secrets are needed.
+
+on:
+  schedule:
+    # 09:00 UTC every Monday and Thursday
+    - cron: '0 9 * * 1,4'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    name: Ping production API
+    runs-on: ubuntu-latest
+    steps:
+      - name: GET /api/action-items (expect 200 + JSON array)
+        run: |
+          set -uo pipefail
+          URL="https://pulse-survey-actions.vercel.app/api/action-items"
+          echo "GET $URL"
+
+          # Capture body + status; fall back to 000 if curl itself fails (DNS/timeout).
+          http_code=$(curl -sS -o response.json -w '%{http_code}' --max-time 30 "$URL" || echo "000")
+          echo "HTTP status: $http_code"
+          echo "----- body -----"
+          cat response.json 2>/dev/null || echo "(no body)"
+          echo
+          echo "----------------"
+
+          if [ "$http_code" != "200" ]; then
+            echo "::error::Expected HTTP 200 but got $http_code — production API is unhealthy (site down or Supabase paused/unreachable)."
+            exit 1
+          fi
+
+          # The endpoint returns an array of action items; anything else is a bad payload.
+          if ! jq -e 'type == "array"' response.json >/dev/null 2>&1; then
+            echo "::error::Response was not a valid JSON array — unexpected payload from production."
+            exit 1
+          fi
+
+          echo "OK: 200 with a JSON array of $(jq 'length' response.json) item(s)."
