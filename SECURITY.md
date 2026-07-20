@@ -1,8 +1,20 @@
 # Security Model
 
-This is a demo/portfolio app with no user accounts. The model is deliberately
-simple and layered: **public read and submit, admin-secret-gated mutations,
-with Row Level Security as the database-level backstop.**
+This is a demo/portfolio app with no user accounts. It models a two-role triage
+workflow: **anyone submits feedback and browses status; a facilities/admin team
+triages — updating status, dates, and details, and managing the lookup tables.**
+Submitters don't edit their items after posting (a managed queue, not a wiki).
+Enforcement is deliberately simple and layered: **public read and submit,
+admin-secret-gated mutations, with Row Level Security as the database-level
+backstop.**
+
+In a production enterprise deployment the admin role would be identity-based —
+SSO/OIDC (e.g. Entra ID), role-based access, per-user audit trails, and session
+expiry — rather than a shared secret. That substitution is the *only* part that
+would change: the layered API-gate + RLS structure below is the
+production-realistic piece, and real auth would just swap the gate's credential
+check for a verified identity/role. The shared secret is the right-sized demo
+substitute for that gate.
 
 ## Overview
 
@@ -29,10 +41,14 @@ Routes that pass the gate create a **per-request** Supabase client with the
 `service_role` key (`createAdminClient()`), which bypasses RLS. That client
 is never created at module level and never shared with public code paths.
 
-The `/edit` page provides a minimal unlock: it prompts for the secret, keeps
-it in `sessionStorage` (cleared when the tab closes), and sends it as the
-header. This is a convenience for a demo app, not real authentication — the
-server-side check is what actually protects the data.
+The `/edit` page provides a minimal unlock. It starts locked and read-only,
+showing an "Admin access required" banner; entering the secret in the in-page
+form verifies it up front via `POST /api/admin/verify` (which runs the same
+`requireAdmin()` gate and touches no data) before revealing any edit controls.
+The verified secret is kept in `sessionStorage` (per tab, cleared when the tab
+closes) and sent as the `x-admin-secret` header on each mutation; a Lock button
+clears it. This is a convenience for a demo app, not real authentication — the
+server-side gate on the mutating routes is what actually protects the data.
 
 ## Layer 2: Row Level Security (database backstop)
 
@@ -92,7 +108,11 @@ Re-check with `npm audit --omit=dev` after dependency changes.
 
 ## Known limitations (accepted for a demo app)
 
-- A single shared admin secret, not per-user auth or audit trails.
+- A single shared admin secret, not per-user auth or audit trails. In a real
+  enterprise deployment this would be identity-based auth (SSO/OIDC such as
+  Entra ID), role-based access, per-user audit trails, and session expiry; the
+  shared secret is the deliberately right-sized demo substitute, and only the
+  gate's credential check would change — the API-gate + RLS layering stays.
 - No rate limiting on the public submit endpoint.
 - The admin secret transits as a request header — fine over HTTPS (Vercel
   enforces it), but do not run this over plain HTTP.

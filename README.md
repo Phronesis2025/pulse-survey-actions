@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/Phronesis2025/pulse-survey-actions/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Phronesis2025/pulse-survey-actions/actions/workflows/ci.yml)
 
-A full-stack Next.js + Supabase app for collecting and managing facilities action items from workplace pulse-survey feedback. Anyone can submit and browse items; everything destructive sits behind an admin secret and locked-down Row Level Security. Built as an engineering case study: this README documents not just *what* it does, but *why* it's built the way it is.
+A full-stack Next.js + Supabase app for collecting and managing facilities action items from workplace pulse-survey feedback. It models a triage workflow: anyone — an employee, a visitor — submits feedback and browses live status, while a facilities/admin team triages each item (updating status, target dates, and details) and manages the lookup tables. Submitters intentionally don't edit their items after posting — it's a managed queue, not a wiki. Built as an engineering case study: this README documents not just *what* it does, but *why* it's built the way it is.
 
 **Live demo:** https://pulse-survey-actions.vercel.app
 
@@ -16,7 +16,7 @@ A full-stack Next.js + Supabase app for collecting and managing facilities actio
 
 ## The app in one paragraph
 
-Employees submit facilities issues ("Improve break room ventilation") through a public form. Each item carries a site, category → sub-category, status, optional target date, and notes. A dashboard shows the live picture — status distribution, overdue items surfaced first, filter/search across everything — in a dense sortable table or a card grid. Admins edit items and manage lookup tables via secret-gated API routes. Data exports to Excel, and Power BI can connect straight to Postgres.
+Employees submit facilities issues ("Improve break room ventilation") through a public form. Each item carries a site, category → sub-category, status, optional target date, and notes. A dashboard shows the live picture — status distribution, overdue items surfaced first, filter/search across everything — in a dense sortable table or a card grid. The facilities/admin team triages items — updating status, dates, and details — and manages the lookup tables through secret-gated API routes; submitters don't edit their own items afterward. Data exports to Excel, and Power BI can connect straight to Postgres.
 
 ## Engineering case study
 
@@ -58,7 +58,7 @@ Browser ──── fetch ────► Next.js API routes ────► Su
    │  secret header             (bypasses RLS)
 ```
 
-The browser never holds a database credential. The `/edit` page's "unlock" (a prompt stored in `sessionStorage`) is a convenience, not a security boundary — the server-side check is authoritative, and the tradeoff is documented in the code.
+The browser never holds a database credential. The `/edit` page starts locked and read-only; the admin team unlocks editing through an in-page form that verifies the secret via `POST /api/admin/verify` before any edit controls appear. The verified secret is kept in `sessionStorage` (per tab) and sent as a header on mutations — a convenience, not a security boundary. The server-side gate on every mutating route stays authoritative.
 
 ## Tech stack
 
@@ -114,7 +114,7 @@ curl -X POST https://pulse-survey-actions.vercel.app/api/sites `
   -d '{"name": "New Site"}'
 ```
 
-Same pattern for `PUT`/`DELETE` on `/api/sites/[id]`, `/api/categories`, `/api/sub-categories`, and `/api/statuses`. Editing action items has a UI at `/edit` (admin secret prompted on first save).
+Same pattern for `PUT`/`DELETE` on `/api/sites/[id]`, `/api/categories`, `/api/sub-categories`, and `/api/statuses`. Editing action items has a UI at `/edit`: the page is read-only until the admin team enters the secret in the in-page unlock (verified up front via `POST /api/admin/verify`), which then persists per tab in `sessionStorage`.
 
 ## Power BI
 
@@ -138,8 +138,8 @@ Import the repo in [Vercel](https://vercel.com), add the same four environment v
 
 ## Known tradeoffs (accepted deliberately)
 
-- **One shared admin secret, no user accounts** — right-sized for a demo/portfolio app; the layered design means upgrading to real auth later only changes the gate, not the data layer.
-- **`sessionStorage` + `window.prompt` unlock** — crude by design; it exists so the demo is usable, while the server stays the only enforcement point.
+- **One shared admin secret, no user accounts** — a deliberately right-sized stand-in for a demo/portfolio app. A production enterprise deployment would use identity-based auth instead: SSO/OIDC (e.g. Entra ID), role-based access for the facilities/admin team, per-user audit trails, and session expiry. What would *not* change is the structure — the layered API-gate + RLS design is the production-realistic part; real auth would only swap the gate's credential check (shared secret → verified identity/role), leaving the data layer and RLS untouched.
+- **In-page unlock over `sessionStorage`** — the `/edit` page is read-only until the admin secret is entered in an in-page form (verified via `POST /api/admin/verify`); the secret then lives in `sessionStorage` per tab. Crude by design, matching the shared-secret model above — the server-side gate stays the only real enforcement point.
 - **No assignee column** — items carry the submitter (`user_name`); assignment context lives in notes. Adding a column is a small migration if the need becomes real.
 - **CI hits the real demo database** — mitigated by per-ref concurrency, unique test-row names, and fail-loud cleanup rather than a second database.
 
