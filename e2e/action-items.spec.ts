@@ -2,8 +2,8 @@ import { test, expect } from '@playwright/test';
 import { testData, waitForApiCall } from './fixtures';
 
 // Admin secret for the protected PUT/DELETE routes; loaded from .env.local
-// by playwright.config.ts. Sent as the x-admin-secret header for cleanup
-// and injected into sessionStorage for the browser-side edit flow.
+// by playwright.config.ts. Sent as the x-admin-secret header for cleanup,
+// and typed into the /edit unlock form to exercise the admin UI.
 const ADMIN_SECRET = process.env.ADMIN_SECRET || '';
 const adminHeaders = { 'x-admin-secret': ADMIN_SECRET };
 
@@ -93,14 +93,7 @@ test.describe('Action Items', () => {
   });
 
   test('should edit an existing action item', async ({ page, request }) => {
-    // The edit page reads the admin secret from sessionStorage and sends it
-    // as the x-admin-secret header on PUT; seed it so no prompt appears.
-    await page.addInitScript(
-      (secret) => window.sessionStorage.setItem('pulse_admin_secret', secret),
-      ADMIN_SECRET
-    );
-
-    // First, create an item to edit
+    // First, create an item to edit (public submit — no admin needed)
     const userName = uniqueUserName();
     await page.goto('/');
     await page.fill('input[id="user_name"]', userName);
@@ -115,8 +108,23 @@ test.describe('Action Items', () => {
     // Wait for success message
     await expect(page.locator('text=Action item submitted successfully!')).toBeVisible({ timeout: 10000 });
 
-    // Now go to edit page and find this test's row (other rows may exist)
+    // The edit page must open LOCKED — read-only list, no Edit buttons.
     await page.goto('/edit');
+    await expect(page.getByText('Admin access required')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Edit' })).toHaveCount(0);
+
+    // A wrong secret is rejected by /api/admin/verify (401) and stays locked.
+    await page.fill('input#admin_secret', 'not-the-real-secret');
+    await page.getByRole('button', { name: 'Unlock', exact: true }).click();
+    await expect(page.getByText('Invalid admin secret.')).toBeVisible();
+    await expect(page.getByText('Admin access required')).toBeVisible();
+
+    // The correct secret unlocks the editing controls.
+    await page.fill('input#admin_secret', ADMIN_SECRET);
+    await page.getByRole('button', { name: 'Unlock', exact: true }).click();
+    await expect(page.getByText('Admin access unlocked')).toBeVisible({ timeout: 10000 });
+
+    // Find this test's row (other rows may exist) and open its editor.
     const row = page.locator('.bg-gray-50', { hasText: userName });
     await expect(row).toBeVisible({ timeout: 10000 });
     await row.locator('button:has-text("Edit")').click();
